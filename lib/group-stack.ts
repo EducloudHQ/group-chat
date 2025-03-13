@@ -1,8 +1,10 @@
 import { Stack, StackProps } from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { Table } from "aws-cdk-lib/aws-dynamodb";
 import { Construct } from "constructs";
 import * as path from "path";
+import { CfnResolver } from "aws-cdk-lib/aws-appsync";
 interface GroupStackProps extends StackProps {
   groupChatGraphqlApi: appsync.GraphqlApi;
   groupChatTable: Table;
@@ -12,10 +14,7 @@ export class GroupStacks extends Stack {
   constructor(scope: Construct, id: string, props: GroupStackProps) {
     super(scope, id, props);
 
-    const {
-      groupChatTable,
-      groupChatGraphqlApi,
-    } = props;
+    const { groupChatTable, groupChatGraphqlApi } = props;
 
     const groupDataSource = groupChatGraphqlApi.addDynamoDbDataSource(
       "GroupDataSource",
@@ -33,6 +32,25 @@ export class GroupStacks extends Stack {
         ),
         runtime: appsync.FunctionRuntime.JS_1_0_0,
       }
+    );
+    const bedrockDataSource = groupChatGraphqlApi.addHttpDataSource(
+      "bedrockDS",
+      "https://bedrock-runtime.us-east-1.amazonaws.com",
+      {
+        authorizationConfig: {
+          signingRegion: "us-east-1",
+          signingServiceName: "bedrock",
+        },
+      }
+    );
+
+    bedrockDataSource.grantPrincipal.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        resources: [
+          "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0",
+        ],
+        actions: ["bedrock:InvokeModel"],
+      })
     );
 
     new appsync.Resolver(this, "createGroupResolver", {
@@ -100,7 +118,10 @@ export class GroupStacks extends Stack {
         api: groupChatGraphqlApi,
         dataSource: groupDataSource,
         code: appsync.Code.fromAsset(
-          path.join(__dirname, "../resolvers/group/getAllGroupsCreatedByUser.js")
+          path.join(
+            __dirname,
+            "../resolvers/group/getAllGroupsCreatedByUser.js"
+          )
         ),
         runtime: appsync.FunctionRuntime.JS_1_0_0,
       }
@@ -179,25 +200,25 @@ export class GroupStacks extends Stack {
       });
 
     groupChatGraphqlApi
-    .addDynamoDbDataSource("getUserGroup", groupChatTable)
-    .createResolver("userGroupResolver", {
-      typeName: "UserGroup",
-      fieldName: "groups",
-      code: appsync.Code.fromAsset(
-        path.join(__dirname, "../resolvers/group/getUserGroup.js")
-      ),
-      runtime: appsync.FunctionRuntime.JS_1_0_0,
-    });
+      .addDynamoDbDataSource("getUserGroup", groupChatTable)
+      .createResolver("userGroupResolver", {
+        typeName: "UserGroup",
+        fieldName: "groups",
+        code: appsync.Code.fromAsset(
+          path.join(__dirname, "../resolvers/group/getUserGroup.js")
+        ),
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
+      });
 
     groupChatGraphqlApi
-    .addDynamoDbDataSource("getGroupUser", groupChatTable)
-    .createResolver("groupUserResolver", {
-      typeName: "GroupUser",
-      fieldName: "user",
-      code: appsync.Code.fromAsset(
-        path.join(__dirname, "../resolvers/group/getGroupUser.js")
-      ),
-      runtime: appsync.FunctionRuntime.JS_1_0_0,
-    });
+      .addDynamoDbDataSource("getGroupUser", groupChatTable)
+      .createResolver("groupUserResolver", {
+        typeName: "GroupUser",
+        fieldName: "user",
+        code: appsync.Code.fromAsset(
+          path.join(__dirname, "../resolvers/group/getGroupUser.js")
+        ),
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
+      });
   }
 }
